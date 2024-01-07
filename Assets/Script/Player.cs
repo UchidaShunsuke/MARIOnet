@@ -1,28 +1,35 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+
 public class Player : MonoBehaviour
 {
-    //インスペクターで設定する
-    public float speed; //速度
-    public float gravity; //重力
-    public float jumpSpeed;//ジャンプする速度
-    public float jumpHeight;//高さ制限
-    public float jumpLimitTime;//ジャンプ制限時間
-    public GroundCheck ground; //接地判定
-    public GroundCheck head;//頭ぶつけた判定
-    public AnimationCurve dashCurve;  //New
-    public AnimationCurve jumpCurve;  //New
+    #region//インスペクターで設定する
+    [Header("移動速度")] public float speed;
+    [Header("重力")] public float gravity;
+    [Header("ジャンプ速度")] public float jumpSpeed;
+    [Header("ジャンプする高さ")] public float jumpHeight;
+    [Header("ジャンプする長さ")] public float jumpLimitTime;
+    [Header("接地判定")] public GroundCheck ground;
+    [Header("天井判定")] public GroundCheck head;
+    [Header("ダッシュの速さ表現")] public AnimationCurve dashCurve;
+    [Header("ジャンプの速さ表現")] public AnimationCurve jumpCurve;
+    #endregion
 
-    //プライベート変数
+    #region//プライベート変数 
     private Animator anim = null;
     private Rigidbody2D rb = null;
     private bool isGround = false;
     private bool isJump = false;
+    private bool isRun = false;
     private bool isHead = false;
+    private bool isDown = false;
     private float jumpPos = 0.0f;
-    private float dashTime, jumpTime;  //New
-    private float beforeKey;  //New
+    private float dashTime = 0.0f;
+    private float jumpTime = 0.0f;
+    private float beforeKey = 0.0f;
+    private string enemyTag = "Enemy";
+    #endregion
 
     void Start()
     {
@@ -33,15 +40,36 @@ public class Player : MonoBehaviour
 
     void FixedUpdate()
     {
-        //接地判定を得る
-        isGround = ground.IsGround();
-        isHead = head.IsGround();
+        if (!isDown)
+        {
+            //接地判定を得る
+            isGround = ground.IsGround();
+            isHead = head.IsGround();
 
-        //キー入力されたら行動する
-        float horizontalKey = Input.GetAxis("Horizontal");
-        float xSpeed = 0.0f;
-        float ySpeed = -gravity;
+            //各種座標軸の速度を求める
+            float xSpeed = GetXSpeed();
+            float ySpeed = GetYSpeed();
+
+            //アニメーションを適用
+            SetAnimation();
+
+            //移動速度を設定
+            rb.velocity = new Vector2(xSpeed, ySpeed);
+        }
+        else
+        {
+            rb.velocity = new Vector2(0, -gravity);
+        }
+    }
+
+    /// <summary>
+    /// Y成分で必要な計算をし、速度を返す。
+    /// </summary> 
+    /// <returns>Y軸の速さ</returns> 
+    private float GetYSpeed()
+    {
         float verticalKey = Input.GetAxis("Vertical");
+        float ySpeed = -gravity;
 
         if (isGround)
         {
@@ -78,28 +106,43 @@ public class Player : MonoBehaviour
             }
         }
 
+        if (isJump)
+        {
+            ySpeed *= jumpCurve.Evaluate(jumpTime);
+        }
+        return ySpeed;
+    }
+
+    /// <summary> 
+    /// X成分で必要な計算をし、速度を返す。 
+    /// </summary> 
+    /// <returns>X軸の速さ</returns> 
+    private float GetXSpeed()
+    {
+        float horizontalKey = Input.GetAxis("Horizontal");
+        float xSpeed = 0.0f;
         if (horizontalKey > 0)
         {
             transform.localScale = new Vector3(1, 1, 1);
-            anim.SetBool("run", true);
-            dashTime += Time.deltaTime;  //New
+            isRun = true;
+            dashTime += Time.deltaTime;
             xSpeed = speed;
         }
         else if (horizontalKey < 0)
         {
             transform.localScale = new Vector3(-1, 1, 1);
-            anim.SetBool("run", true);
-            dashTime += Time.deltaTime;  //New
+            isRun = true;
+            dashTime += Time.deltaTime;
             xSpeed = -speed;
         }
         else
         {
-            anim.SetBool("run", false);
+            isRun = false;
             xSpeed = 0.0f;
-            dashTime = 0.0f;  //New
+            dashTime = 0.0f;
         }
 
-        //前回の入力からダッシュの反転を判断して速度を変える New
+        //前回の入力からダッシュの反転を判断して速度を変える
         if (horizontalKey > 0 && beforeKey < 0)
         {
             dashTime = 0.0f;
@@ -110,14 +153,29 @@ public class Player : MonoBehaviour
         }
         beforeKey = horizontalKey;
 
-        //アニメーションカーブを速度に適用 New
         xSpeed *= dashCurve.Evaluate(dashTime);
-        if (isJump)
-        {
-            ySpeed *= jumpCurve.Evaluate(jumpTime);
-        }
-        anim.SetBool("jump", isJump); //New
-        anim.SetBool("ground", isGround); //New
-        rb.velocity = new Vector2(xSpeed, ySpeed);
+        beforeKey = horizontalKey;
+        return xSpeed;
     }
+
+    /// <summary> 
+    /// アニメーションを設定する 
+    /// </summary> 
+    private void SetAnimation()
+    {
+        anim.SetBool("jump", isJump);
+        anim.SetBool("ground", isGround);
+        anim.SetBool("run", isRun);
+    }
+
+    #region//接触判定      
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (collision.collider.tag == enemyTag)
+        {
+            anim.Play("player_down");
+            isDown = true;
+        }
+    }
+    #endregion
 }
